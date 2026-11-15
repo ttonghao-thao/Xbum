@@ -1,0 +1,59 @@
+{
+  "siglip_revision": "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2",
+  "opencv_zoo_revision": "48b10fa505aeb51fbd127fc60a5c660040e823b7",
+  "whisper_revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "files": {
+    "face_detection_yunet_2023mar.onnx": {
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "bytes": 232589
+    },
+    "ggml-small.bin": {
+      "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+      "bytes": 487601967
+    },
+    "ollama-model.json": {
+      "sha256": "3abc368d3fe3ff8ef73699ae4abf838d9c9c75bd11de35e3943dc27595537e9f",
+      "bytes": 640
+    },
+    "ollama-manifest.json": {
+      "sha256": "afc393e3572c07db0bc84aa460d928a16c75f3fbb9ca9e0dccc4fbd2dafb573e",
+      "bytes": 1120
+    },
+    "face_recognition_sface_2021dec.onnx": {
+      "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+      "bytes": 38696353
+    },
+    "siglip2/model.safetensors": {
+      "sha256": "612923381c76ec5a9bed335d1c48827e3f2e506ac31b044b63b2031fadee6a0b",
+      "bytes": 1500800904
+    },
+    "siglip2/xbum-version.json": {
+      "sha256": "40dfa7f17a2190dea87fec23c9c52ff8e1d7fea940caa04586117bbf39c2dc80",
+      "bytes": 99
+    },
+    "siglip2/tokenizer_config.json": {
+      "sha256": "14afe629fe4959b9e0d51e1852b8d9f7ad074f90a1a7125a4fcdd17f06e78fc8",
+      "bytes": 47164
+    },
+    "siglip2/special_tokens_map.json": {
+      "sha256": "baec30ea10906f16adb8c18af7a34023002c1746542612b8b41c9f09e1351351",
+      "bytes": 636
+    },
+    "siglip2/config.json": {
+      "sha256": "fe8b5fe6d5734360678fd71c11c21e1ea3364bd8598d34295d9206335973ffd7",
+      "bytes": 253
+    },
+    "siglip2/tokenizer.json": {
+      "sha256": "cb9140fae3ac5122c972d37adf83e1248471a38147ad76f8215c8872c6fd8322",
+      "bytes": 34363039
+    },
+    "siglip2/tokenizer.model": {
+      "sha256": "61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2",
+      "bytes": 4241003
+    },
+    "siglip2/preprocessor_config.json": {
+      "sha256": "9b36b57ebaf20f09bf4c22100ccc21877ea6bfe5aead0c00c59f8af8ccefacfc",
+      "bytes": 394
+    }
+  }
+}

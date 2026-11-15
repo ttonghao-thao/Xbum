@@ -1,0 +1,55 @@
+{
+  "ok": true,
+  "wall_s": 23.514,
+  "fake_provider": false,
+  "network": "local model loading + loopback Ollama; no physically disconnected OS test",
+  "photo_steps": [
+    {
+      "type": "postprocess",
+      "state": "succeeded",
+      "duration_ms": 2,
+      "model_version": ""
+    },
+    {
+      "type": "faces",
+      "state": "skipped",
+      "duration_ms": 0,
+      "model_version": ""
+    },
+    {
+      "type": "vlm",
+      "state": "succeeded",
+      "duration_ms": 6630,
+      "model_version": "afc393e3572c07db0bc84aa460d928a16c75f3fbb9ca9e0dccc4fbd2dafb573e"
+    },
+    {
+      "type": "embedding",
+      "state": "succeeded",
+      "duration_ms": 5316,
+      "model_version": "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2"
+    },
+    {
+      "type": "quality",
+      "state": "succeeded",
+      "duration_ms": 61,
+      "model_version": ""
+    },
+    {
+      "type": "metadata",
+      "state": "succeeded",
+      "duration_ms": 171,
+      "model_version": "pillow-local/metadata-1"
+    }
+  ],
+  "embedding_dimension": 768,
+  "embedding_bytes": 3072,
+  "semantic_job_state": "succeeded",
+  "semantic_candidates": 1,
+  "asr_transcript_synthetic": "去年春節的全家合影,我們一起去海邊旅行",
+  "asr_model_version": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+  "audio_correction": true,
+  "speech_query_transcript": "去年春節的全家合影,我們一起去海邊旅行",
+  "speech_search_time_basis": "春节",
+  "speech_search_candidate_count": 0,
+  "display_after_withdrawal_empty": true
+}

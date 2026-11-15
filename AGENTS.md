@@ -1,0 +1,13 @@
+# Xbum 工程约定
+
+本仓库实现 `AI_Family_Album_Codex_Spec.md` 全量功能；不按产品阶段删减。
+修改前阅读规格、`docs/IMPLEMENTATION_PLAN.md`、`docs/ARCHITECTURE.md` 和相关源代码。
+保留 FastAPI / SQLite WAL / 单 Worker / React 架构。所有模型推理均为本地异步任务。
+API 进程不得加载 torch；模型子进程退出释放内存。运行时模型加载必须 local_files_only。
+所有媒体读取必须先校验家庭和对象权限；禁止 public 静态媒体目录。
+用户修正不能被模型覆盖；private、hidden、deleted 不进入展示、故事或检索。
+真实数据、凭据、权重、原始人脸向量不得提交。仅合成图片可用于测试。
+使用 `make test`、`make build`；真实模型用 `make model-smoke` 单独验证。
+维护测试报告，明确区分 fake provider、真实模型、真实家庭样本与硬件验收。
+2026-11-15 确认：往年今日、慢慢长大、一起走过自动归集为独立相册；无需先手动配置。人工日期/事件/人物选择优先，缺少候选保持空相册，不能回退全部照片。此要求替换规格中的成长手动启用前提；身份、关系、里程碑及人脸授权约束不变。分类规则见 docs/AUTOMATIC_ALBUMS.md。
+2026-11-15 实机修正：本人登录后的自动相册属于个人整理浏览，包含本人 private 与已授权 family，不能向其他成员或 display 泄露 private；家庭轮播、故事、检索仍仅取 family。往年今日始终包含往年同日前后 3 天。历史与新增照片共用版本化分析契约，升级自动补齐旧结果，不能要求重新上传或无差别重跑所有模型；共享须本人明确操作，可批量确认共享。

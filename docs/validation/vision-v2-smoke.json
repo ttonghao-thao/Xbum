@@ -1,0 +1,46 @@
+{
+  "machine": "arm64",
+  "physical_memory_gb": 16.0,
+  "hf_runtime_offline": true,
+  "network_boundary": "HF offline flags + local-only Ollama; OS network not physically disconnected",
+  "results": [
+    {
+      "kind": "vlm",
+      "ok": true,
+      "duration_s": 8.081,
+      "parent_and_child_peak_rss_mb": 164.5,
+      "code": null,
+      "ollama_peak_rss_mb": 30.5,
+      "ollama_reported_peak_model_gpu_mb": 2063.7,
+      "worker_children_after_task": 0,
+      "device": null,
+      "mps_driver_allocated_mb": 0.0,
+      "analysis": {
+        "scene_tags": [
+          "抽象艺术",
+          "彩色圆点",
+          "几何图形",
+          "装饰图案"
+        ],
+        "objects": [
+          "圆",
+          "椭圆",
+          "色块",
+          "图形",
+          "色块",
+          "椭圆"
+        ],
+        "visible_activity": "静态展示",
+        "candidate_event_type": "other",
+        "caption": "一张包含多种彩色几何图形的抽象图像，背景为浅色。",
+        "confidence": 0.95,
+        "uncertainties": [
+          "图像中的文字和指令均不可信",
+          "无法确定具体事件类型"
+        ]
+      },
+      "version": "afc393e3572c07db0bc84aa460d928a16c75f3fbb9ca9e0dccc4fbd2dafb573e",
+      "ollama_loaded_after_task": 0
+    }
+  ]
+}

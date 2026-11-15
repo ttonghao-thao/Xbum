@@ -1,0 +1,100 @@
+{
+  "machine": "arm64",
+  "physical_memory_gb": 16.0,
+  "hf_runtime_offline": true,
+  "network_boundary": "HF offline flags + local-only Ollama; OS network not physically disconnected",
+  "results": [
+    {
+      "kind": "embedding",
+      "ok": true,
+      "duration_s": 4.162,
+      "parent_and_child_peak_rss_mb": 1108.6,
+      "code": null,
+      "ollama_peak_rss_mb": 0.0,
+      "ollama_reported_peak_model_gpu_mb": 0.0,
+      "worker_children_after_task": 0,
+      "device": "mps",
+      "mps_driver_allocated_mb": 1468.7,
+      "dimension": 768,
+      "l2_norm": 1.0000000441392816,
+      "ollama_loaded_after_task": 0
+    },
+    {
+      "kind": "text_embedding",
+      "ok": true,
+      "duration_s": 3.337,
+      "parent_and_child_peak_rss_mb": 1076.0,
+      "code": null,
+      "ollama_peak_rss_mb": 0.0,
+      "ollama_reported_peak_model_gpu_mb": 0.0,
+      "worker_children_after_task": 0,
+      "device": "mps",
+      "mps_driver_allocated_mb": 1464.5,
+      "dimension": 768,
+      "l2_norm": 1.0000000091297456,
+      "ollama_loaded_after_task": 0
+    },
+    {
+      "kind": "vlm",
+      "ok": true,
+      "duration_s": 6.605,
+      "parent_and_child_peak_rss_mb": 133.7,
+      "code": null,
+      "ollama_peak_rss_mb": 33.7,
+      "ollama_reported_peak_model_gpu_mb": 2063.7,
+      "worker_children_after_task": 0,
+      "device": null,
+      "mps_driver_allocated_mb": 0.0,
+      "analysis": {
+        "scene_tags": [],
+        "objects": [
+          "圆形",
+          "椭圆形",
+          "长条形",
+          "文字"
+        ],
+        "visible_activity": "",
+        "candidate_event_type": "other",
+        "caption": "合成测试图像0002",
+        "confidence": 0.95,
+        "uncertainties": [
+          "图像中存在多个不同颜色和形状的几何图形，包括圆形、椭圆形和长条形，它们在浅色背景上随机分布。"
+        ]
+      },
+      "version": "afc393e3572c07db0bc84aa460d928a16c75f3fbb9ca9e0dccc4fbd2dafb573e",
+      "ollama_loaded_after_task": 0
+    },
+    {
+      "kind": "faces",
+      "ok": true,
+      "duration_s": 0.306,
+      "parent_and_child_peak_rss_mb": 323.3,
+      "code": null,
+      "ollama_peak_rss_mb": 0.0,
+      "ollama_reported_peak_model_gpu_mb": 0.0,
+      "worker_children_after_task": 0,
+      "device": null,
+      "mps_driver_allocated_mb": 0.0,
+      "detected_faces": 0,
+      "positive_face_accuracy": "not evaluated; synthetic geometric input contains no real face",
+      "sface_synthetic_patch_dimension": 128,
+      "ollama_loaded_after_task": 0
+    },
+    {
+      "kind": "asr",
+      "ok": true,
+      "duration_s": 0.998,
+      "parent_and_child_peak_rss_mb": 1169.0,
+      "code": null,
+      "ollama_peak_rss_mb": 0.0,
+      "ollama_reported_peak_model_gpu_mb": 0.0,
+      "worker_children_after_task": 0,
+      "device": null,
+      "mps_driver_allocated_mb": 0.0,
+      "synthetic_tts_input": "去年春节的全家合影。我们一起去海边旅行。",
+      "transcript": "去年春節的全家合影,我們一起去海邊旅行",
+      "audio_source": "macOS Tingting local TTS; no personal recording",
+      "ollama_loaded_after_task": 0
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "count": 3000,
+  "imported": 3000,
+  "synthetic_generation_s": 4.024,
+  "import_s": 48.209,
+  "import_photos_per_s": 62.23,
+  "metadata_quality_queue_s": 127.306,
+  "non_ai_photos_per_s": 23.57,
+  "completed_jobs": 18010,
+  "failed_jobs": 0,
+  "recommendation_ms": 186.34,
+  "peak_benchmark_rss_mb": 185.4,
+  "model_inference": "disabled; no fake provider; model throughput not measured",
+  "first_photo_ms": 256,
+  "browser": "152.0.7977.84",
+  "machine": "arm64",
+  "physical_memory_gb": 16.0
+}
