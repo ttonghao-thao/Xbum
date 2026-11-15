@@ -159,6 +159,11 @@ class SearchInput(Strict):
     start: date | None = None
     end: date | None = None
     person_id: str | None = None
+    person_ids: list[str] = Field(default_factory=list, max_length=100)
+    people_mode: Literal["all", "any"] = "all"
+    terms: list[str] = Field(default_factory=list, max_length=30)
+    exclude_terms: list[str] = Field(default_factory=list, max_length=30)
+    reference_photo_id: str | None = None
     event_id: str | None = None
     location: str | None = Field(default=None, max_length=200)
     semantic: bool = True
@@ -208,6 +213,11 @@ class SettingsPatch(Strict):
     speech_enabled: bool | None = None
     embedding_enabled: bool | None = None
     vlm_enabled: bool | None = None
+    ocr_enabled: bool | None = None
+    background_start_hour: int | None = Field(default=None, ge=0, le=23)
+    background_end_hour: int | None = Field(default=None, ge=0, le=23)
+    min_free_memory_mb: int | None = Field(default=None, ge=0, le=65536)
+    min_free_disk_mb: int | None = Field(default=None, ge=0, le=1048576)
     daily_photo_limit: int | None = Field(default=None, ge=10, le=30)
     display_interval_seconds: int | None = Field(default=None, ge=3, le=120)
     quiet_start: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")

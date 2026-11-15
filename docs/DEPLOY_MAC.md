@@ -3,7 +3,7 @@
 推荐原生 macOS，Homebrew + Python 3.12 + Node 22.12+。CPU 解码/质量/NumPy 在本机；Ollama 运行于 macOS 宿主，利用 Metal；不在 Docker Desktop 中期待 Apple GPU。
 
 1. `make setup`：只安装缺少的系统工具，按 uv.lock / package-lock.json 安装依赖，执行 Alembic 与前端构建。首次从空 Mac 安装需要联网。
-2. `make start`：API 默认 127.0.0.1:8000，单 Worker，共享维护锁。Ollama 已运行则复用，否则在已安装命令时自动启动。Ctrl+C 停止本次启动的进程；外部原有 Ollama 保留。后台停止及单独卸载模型见 [运维文档：启动与停止](OPERATIONS.md#启动与停止)。
+2. `make start`：API 默认 127.0.0.1:8000，单 Worker，共享维护锁。Ollama 已运行则复用，否则在已安装命令时自动启动。在另一终端执行 `make stop` 一键停止，或 `make restart` 停止完成后重新前台启动；开发模式用 `make restart DEV=1`。Ctrl+C 同样停止本次启动的进程；外部原有 Ollama 保留。详见 [运维文档：启动与停止](OPERATIONS.md#启动与停止)。
 3. 浏览器 `/setup` 自行设置账号；不写入口令到 `.env` 或源码。
 4. 另一终端执行 `bash scripts/download_models.sh all`。遇到当前网络的 Ollama blob 下载限制时，可执行 `... vlm-cache` 后重试 all。
 5. `make model-smoke` 真实验证。人脸/语音仍须设置页明确启用。

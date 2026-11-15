@@ -147,6 +147,11 @@ def claim(db):
         h = db.get(Household, job.household_id)
         if h.settings_json.get("jobs_paused"):
             continue
+        if job.job_type in {"embedding", "vlm", "faces", "ocr", "export", "story_compose"}:
+            from app.services.system import processing_status
+
+            if not processing_status(h)["can_process_background"]:
+                continue
         token = uid()
         expiry = (datetime.now(UTC) + timedelta(seconds=settings.model_timeout + 120)).isoformat()
         result = db.execute(

@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api import auth, library, memories, system
+from app.api import albums, auth, collections, enhancements, library, memories, system
 from app.core.config import settings
 from app.core.middleware import BoundedRequestBody
 
@@ -108,7 +108,7 @@ async def request_context(request: Request, call_next):
     return response
 
 
-for router in (auth.router, library.router, memories.router, system.router):
+for router in (auth.router, library.router, memories.router, system.router, albums.router, collections.router, enhancements.router):
     app.include_router(router, prefix="/api/v1")
 
 

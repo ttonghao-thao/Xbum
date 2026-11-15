@@ -1,0 +1,10 @@
+{
+  "input": "generated bilingual text",
+  "seconds": 26.58,
+  "ok": true,
+  "version": "apple-vision-text-1",
+  "region_count": 2,
+  "text": "XBUM LOCAL 2026\n家庭记忆 相册",
+  "code": null,
+  "worker_children_after_task": 0
+}

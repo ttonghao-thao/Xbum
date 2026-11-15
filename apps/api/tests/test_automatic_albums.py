@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.db.models import Event, EventPhoto, Household, Photo, PhotoAnalysis, PlaylistItem
-from app.db.session import SessionLocal, engine
+from app.db.session import Base, SessionLocal, engine
 from app.main import app
 from app.services.calendar import day_distance
 from app.services.recommendations import build_daily_playlist
@@ -240,6 +240,17 @@ def test_upgrade_preserves_existing_person_choices_faces_and_milestones(client, 
     path = tmp_path / "album.sqlite3"
     with engine.connect() as source, sqlite3.connect(path) as destination:
         source.connection.driver_connection.backup(destination)
+        # Build the actual initial schema, not today's schema with only one old
+        # column removed. New feature tables did not exist at f601a7f91551.
+        initial_tables = {
+            "households", "users", "memberships", "invitations", "display_devices", "sessions",
+            "login_attempts", "photos", "photo_derivatives", "photo_analyses", "embeddings", "people",
+            "faces", "events", "event_photos", "milestones", "stories", "story_slides", "audio_memories",
+            "playlists", "playlist_items", "playback_events", "feedback", "jobs", "search_queries", "audit_logs",
+        }
+        for table in reversed(Base.metadata.sorted_tables):
+            if table.name not in initial_tables:
+                destination.execute(f'DROP TABLE "{table.name}"')
         destination.execute("ALTER TABLE people DROP COLUMN growth_mode")
         destination.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)")
         destination.execute("INSERT INTO alembic_version VALUES ('f601a7f91551')")

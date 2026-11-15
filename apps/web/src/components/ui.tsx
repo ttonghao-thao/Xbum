@@ -96,10 +96,14 @@ export function PhotoGrid({
   photos,
   selected,
   onSelect,
+  onPreferred,
+  preferUserId,
 }: {
   photos: Photo[];
   selected?: Set<string>;
   onSelect?: (id: string) => void;
+  onPreferred?: (photo: Photo) => void;
+  preferUserId?: string;
 }) {
   return (
     <div className="photo-grid">
@@ -136,6 +140,11 @@ export function PhotoGrid({
               {"album_reason" in p && <small>{String(p.album_reason)}</small>}
             </div>
           </Link>
+          {onPreferred && p.uploader_id === preferUserId && (
+            <button className="photo-preferred" onClick={() => onPreferred(p)}>
+              {p.preferred ? "取消代表照片" : "设为代表照片"}
+            </button>
+          )}
         </article>
       ))}
     </div>

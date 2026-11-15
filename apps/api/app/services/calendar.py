@@ -65,6 +65,26 @@ def parse_time(query, timezone, today=None):
     if "这个月" in query or "本月" in query:
         start = today.replace(day=1)
         return start, (start + timedelta(days=32)).replace(day=1) - timedelta(days=1), "本月"
+    month_match = re.search(r"(?<!\d)(1[0-2]|0?[1-9])月", query)
+    if month_match:
+        month = int(month_match.group(1))
+        start = date(year, month, 1)
+        end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        return start, end, f"{year}年{month}月"
+    for terms, first, last in [
+        (("春天", "春季"), 3, 5),
+        (("夏天", "夏季"), 6, 8),
+        (("秋天", "秋季"), 9, 11),
+        (("冬天", "冬季"), 12, 2),
+    ]:
+        if any(term in query for term in terms):
+            start = date(year, first, 1)
+            end = (date(year + (last < first), last, 1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            return start, end, f"{year}年{terms[0]}"
+    if "昨天" in query:
+        return today - timedelta(days=1), today - timedelta(days=1), "昨天"
+    if "今天" in query:
+        return today, today, "今天"
     if match or any(word in query for word in ["去年", "前年", "今年"]):
         return date(year, 1, 1), date(year, 12, 31), f"{year}年"
     return None, None, ""

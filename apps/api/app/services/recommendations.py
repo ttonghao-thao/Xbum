@@ -15,6 +15,7 @@ from app.db.models import (
     Feedback,
     Milestone,
     Person,
+    Household,
     PhotoAnalysis,
     PlaybackEvent,
     Playlist,
@@ -37,6 +38,7 @@ def build_daily_playlist(db, household, day=None):
     day_end = (day_start + timedelta(days=1)).astimezone(UTC).isoformat()
     albums = MemoryAlbums(db, household, day)
     photos = albums.photos
+    rule_effects = recommendation_effects(db, household.id, photos, household_scope=True)
     album_reasons = {kind: {r["photo"].id: r["album_reason"] for r in rows} for kind, rows in albums.rows.items()}
     photo_ids = [p.id for p in photos]
     analyses = {a.photo_id: a for a in db.scalars(select(PhotoAnalysis).where(PhotoAnalysis.photo_id.in_(photo_ids)))}
@@ -101,7 +103,7 @@ def build_daily_playlist(db, household, day=None):
     for photo in photos:
         analysis = analyses.get(photo.id)
         quality = analysis.quality_score if analysis and analysis.quality_score is not None else 0.5
-        if quality < config["quality_floor"] or photo.id in blocked:
+        if quality < config["quality_floor"] or photo.id in blocked or rule_effects[photo.id]["blocked"]:
             continue
         event = by_photo.get(photo.id)
         scene, reasons = "daily", ["日常精选"]
@@ -171,6 +173,8 @@ def build_daily_playlist(db, household, day=None):
         }
         score = sum(weights[key] * value for key, value in feature.items()) / norm
         score = score / (1 + 0.3 * recent_plays[photo.id]) - (0.25 if photo.id in disliked else 0)
+        score *= rule_effects[photo.id]["multiplier"]
+        reasons.extend(rule_effects[photo.id]["reasons"])
         rows.append(
             {
                 "photo": photo,
@@ -247,15 +251,75 @@ def playlist_payload(db, playlist, household):
     if not playlist:
         return {"items": [], "playlist_date": "", "privacy_revision": household.privacy_revision}
     allowed = {p.id: p for p in display_candidates(db, household)}
+    effects = recommendation_effects(db, household.id, list(allowed.values()), household_scope=True)
     items = []
     from app.db.models import serialize
 
     for item in db.scalars(
         select(PlaylistItem).where(PlaylistItem.playlist_id == playlist.id).order_by(PlaylistItem.position)
     ):
-        if item.photo_id not in allowed:
+        if item.photo_id not in allowed or effects[item.photo_id]["blocked"]:
             continue
         data = serialize(item)
         data["photo"] = photo_payload(db, allowed[item.photo_id])
         items.append(data)
     return {**serialize(playlist), "items": items, "privacy_revision": household.privacy_revision}
+
+
+def recommendation_effects(db, household_id, photos, actor=None, household_scope=False):
+    """Return recommendation-only rules; never mutate visibility or search eligibility."""
+    from app.db.story_features import RecommendationRule
+
+    result = {p.id: {"blocked": False, "multiplier": 1.0, "reasons": []} for p in photos}
+    if not result:
+        return result
+    query = select(RecommendationRule).where(RecommendationRule.household_id == household_id)
+    if household_scope:
+        query = query.where(RecommendationRule.scope == "household")
+    elif actor and actor.user_id and actor.household_id == household_id:
+        query = query.where(RecommendationRule.scope == "personal", RecommendationRule.creator_id == actor.user_id)
+    else:
+        return result
+    rules = list(db.scalars(query))
+    if not rules:
+        return result
+    household = db.get(Household, household_id)
+    zone = ZoneInfo(household.timezone)
+    ids = list(result)
+    people = {p.id for p in db.scalars(select(Person).where(
+        Person.household_id == household_id, Person.manually_confirmed.is_(True)
+    ))}
+    by_person = defaultdict(set)
+    for face in db.scalars(select(Face).where(Face.photo_id.in_(ids), Face.person_id.in_(people))):
+        by_person[face.photo_id].add(face.person_id)
+    analyses = {a.photo_id: a for a in db.scalars(select(PhotoAnalysis).where(PhotoAnalysis.photo_id.in_(ids)))}
+    locations = defaultdict(set)
+    for link, event in db.execute(select(EventPhoto, Event).join(Event).where(
+        EventPhoto.photo_id.in_(ids), Event.household_id == household_id,
+        Event.location_source != "unknown", Event.confirmed.is_(True)
+    )):
+        locations[link.photo_id].add(event.location_label.casefold())
+    for photo in photos:
+        if photo.household_id != household_id:
+            result[photo.id]["blocked"] = True
+            continue
+        taken = datetime.fromisoformat(photo.taken_at).astimezone(zone).date().isoformat() if photo.taken_at else None
+        data = analyses.get(photo.id)
+        tags = [str(x).casefold() for x in data.tags_json] if data and data.analysis_json.get("confidence", 0) >= 0.5 else []
+        for rule in rules:
+            value = rule.target_value.casefold()
+            match = False
+            if rule.target_kind == "person":
+                match = rule.target_value in by_person[photo.id]
+            elif rule.target_kind == "date":
+                match = bool(taken and rule.start_date <= taken <= rule.end_date)
+            elif rule.target_kind == "location":
+                match = bool(value and (value in photo.location_user.casefold() or any(value in x for x in locations[photo.id])))
+            elif rule.target_kind == "theme":
+                match = bool(value and any(value == tag for tag in tags))
+            if match:
+                result[photo.id]["blocked"] |= rule.mode == "never"
+                if rule.mode == "less":
+                    result[photo.id]["multiplier"] *= 0.25
+                result[photo.id]["reasons"].append("按家庭推荐设置减少出现" if household_scope else "按个人推荐设置减少出现")
+    return result

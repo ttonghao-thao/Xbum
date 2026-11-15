@@ -4,14 +4,17 @@ Albums are complete collections, independent of the bounded daily playlist. Huma
 event/person choices take precedence. Missing evidence yields an empty collection.
 """
 
+import hashlib
+import json
 import re
+from calendar import monthrange
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from app.db.models import Event, EventPhoto, Face, Job, Person, PhotoAnalysis
+from app.db.models import Event, EventPhoto, Face, Job, Milestone, Person, PhotoAnalysis
 from app.services.calendar import anniversary_projection, local_now
 from app.services.photos import album_candidates, current_vision, family_candidates
 
@@ -19,6 +22,7 @@ ALBUMS = {
     "on_this_day": ("往年今日", "按家庭时区，整理往年同月同日及前后 3 天的照片，保留实际拍摄年份。"),
     "growth": ("慢慢长大", "自动整理成长相关画面与跨月人物记录，按拍摄时间串起来；人工选择优先。"),
     "travel": ("一起走过", "根据照片内容与事件线索，自动整理旅行和出游；人工修正优先。"),
+    "recent": ("最近的日子", "按真实拍摄日期回顾最近 30 天，或所选月份的完整照片；未知日期不冒充最近拍摄。"),
 }
 CHILD_WORDS = re.compile(
     r"婴儿|嬰兒|宝宝|寶寶|幼儿|幼兒|儿童|兒童|小孩|孩子|小朋友|\b(?:baby|babies|infant|toddler|child|children|kids?)\b",
@@ -30,10 +34,69 @@ NO_CHILD = re.compile(
 )
 
 
+def select_highlights(db, photos, limit=24, preferred_ids=(), household=None, actor=None, score_multipliers=None):
+    """Choose representatives across dates before filling from quality-ranked photos.
+
+    This selects existing photographs, never invents aesthetic or expression scores.
+    Exact/known duplicate groups contribute one representative and originals remain.
+    """
+    if not photos or limit <= 0:
+        return []
+    ids = [p.id for p in photos]
+    analyses = {a.photo_id: a for a in db.scalars(select(PhotoAnalysis).where(PhotoAnalysis.photo_id.in_(ids)))}
+    preferred = set(preferred_ids)
+
+    def rank(photo):
+        a = analyses.get(photo.id)
+        quality = a.quality_score if a and a.quality_score is not None else 0.5
+        weighted_quality = quality * (score_multipliers or {}).get(photo.id, 1)
+        return (photo.id not in preferred, -weighted_quality, photo.taken_at or "9999", photo.id)
+
+    # Keep the best photograph from each known near-duplicate group.
+    distinct = {}
+    for photo in sorted(photos, key=rank):
+        distinct.setdefault(photo.duplicate_group or photo.id, photo)
+    candidates = list(distinct.values())
+    if limit == 1:
+        return sorted(candidates, key=rank)[:1]
+    buckets = defaultdict(list)
+    for photo in candidates:
+        buckets[(photo.taken_at or "unknown")[:10]].append(photo)
+    for bucket in buckets.values():
+        bucket.sort(key=rank)
+    # Evenly sample date buckets when there are more dates than film slots.
+    days = sorted(buckets)
+    if len(days) > limit:
+        chosen = {round(i * (len(days) - 1) / (limit - 1)) for i in range(limit)} if limit > 1 else {0}
+        days = [day for i, day in enumerate(days) if i in chosen]
+    result = []
+    # Explicit user representatives are chosen first even in a densely photographed day.
+    for photo in sorted(candidates, key=rank):
+        if photo.id in preferred and len(result) < limit:
+            result.append(photo)
+    while len(result) < limit:
+        progressed = False
+        selected = {p.id for p in result}
+        for day in days:
+            bucket = buckets[day]
+            while bucket and bucket[0].id in selected:
+                bucket.pop(0)
+            if bucket and len(result) < limit:
+                result.append(bucket.pop(0))
+                progressed = True
+        if not progressed:
+            break
+    return sorted(result, key=lambda p: (p.taken_at or "9999", p.id))
+
+
 class MemoryAlbums:
-    def __init__(self, db, household, day=None, actor=None):
+    def __init__(self, db, household, day=None, actor=None, person_id=None, group=None, period="day"):
+        self.db = db
         self.household = household
         self.day = day or local_now(household.timezone).date()
+        self.period = period
+        self.person_id = person_id
+        self.group = group
         self.photos = album_candidates(db, actor) if actor else family_candidates(db, household.id)
         ids = [p.id for p in self.photos]
         self.dates = {
@@ -91,7 +154,29 @@ class MemoryAlbums:
         self.pending = len(active | ((stale - failed) if household.settings_json["vlm_enabled"] else set()))
         self.mode = "automatic"
         self.window = 0
-        self.rows = {"on_this_day": self._anniversaries(), "growth": self._growth(), "travel": self._travel()}
+        self.rows = {
+            "on_this_day": self._anniversaries(),
+            "growth": self._growth(),
+            "travel": self._travel(),
+            "recent": self._recent(),
+        }
+        if period == "year":
+            for row in self.rows["growth"]:
+                taken = self.dates[row["photo"].id]
+                if taken:
+                    row["album_group"], row["album_group_title"] = str(taken.year), f"{taken.year} 年"
+        # All UI layers consume this same filtered collection. An explicit person
+        # requires human-confirmed identity; candidates are never silently substituted.
+        person_ids = None
+        if person_id:
+            person = self.people.get(person_id)
+            person_ids = self.by_person[person_id] if person and person.manually_confirmed else set()
+        for kind in self.rows:
+            self.rows[kind] = [
+                row for row in self.rows[kind]
+                if (person_ids is None or row["photo"].id in person_ids)
+                and (not group or row["album_group"] == group)
+            ]
 
     def _row(self, photo, reason, group=None, title=None, event=None):
         taken = self.dates[photo.id]
@@ -200,7 +285,75 @@ class MemoryAlbums:
             r for group in ordered for r in sorted(group, key=lambda r: (r["photo"].taken_at or "9999", r["photo"].id))
         ]
 
+    def _recent(self):
+        start = (
+            self.day.replace(day=1) if self.period == "month"
+            else self.day - timedelta(days=min(29, (self.day - date.min).days))
+        )
+        end = (
+            self.day.replace(day=monthrange(self.day.year, self.day.month)[1])
+            if self.period == "month" else self.day
+        )
+        return [
+            self._row(
+                p, "可信拍摄日期的近期记录",
+                self.dates[p.id].strftime("%Y-%m" if self.period == "month" else "%Y-%m-%d"),
+                self.dates[p.id].strftime("%Y 年 %m 月" if self.period == "month" else "%Y 年 %m 月 %d 日"),
+            )
+            for p in sorted(self.photos, key=lambda p: (p.taken_at or "", p.id), reverse=True)
+            if self.dates[p.id] and start <= self.dates[p.id] <= end
+        ]
+
+    def groups(self, kind):
+        groups = {}
+        for row in self.rows[kind]:
+            key = row["album_group"]
+            entry = groups.setdefault(key, {
+                "id": key, "title": row["album_group_title"], "total": 0,
+                "event_id": row["album_event_id"], "dates": {}, "milestones": [],
+            })
+            entry["total"] += 1
+            taken = self.dates[row["photo"].id]
+            key_date = taken.isoformat() if taken else "unknown"
+            entry["dates"][key_date] = entry["dates"].get(key_date, 0) + 1
+        if kind == "growth" and self.person_id:
+            for item in self.db.scalars(select(Milestone).where(
+                Milestone.household_id == self.household.id,
+                Milestone.person_id == self.person_id,
+                Milestone.confirmed.is_(True),
+            ).order_by(Milestone.date)):
+                entry = groups.get(item.date[:4] if self.period == "year" else item.date[:7])
+                if entry:
+                    entry["milestones"].append({"id": item.id, "date": item.date, "title": item.title, "note": item.note})
+        return list(groups.values())
+
+    def revision(self, kind):
+        # Includes permission and visible metadata changes, so old playback state
+        # can be invalidated without generating or exposing a durable private file.
+        values = [
+            (r["photo"].id, r["photo"].visibility, r["photo"].taken_at, r["photo"].title,
+             r["photo"].caption_user, r["album_reason"], r["album_group"])
+            for r in self.rows[kind]
+        ]
+        return hashlib.sha256(json.dumps(values, ensure_ascii=False).encode()).hexdigest()[:24]
+
     def metadata(self, kind):
+        missing_dates = sum(value is None for value in self.dates.values())
+        reasons = []
+        if not self.rows[kind]:
+            reasons.append("当前可见范围没有匹配照片，不会用全部照片填充")
+        if kind in {"on_this_day", "recent"} and missing_dates:
+            reasons.append(f"{missing_dates} 张照片没有可信拍摄日期，未按上传时间归入")
+        if self.pending:
+            reasons.append("部分照片仍在本地分析，完成后自动更新")
+        if self.failed:
+            reasons.append("部分视觉分析失败，可在处理任务中只重试失败步骤")
+        if not self.household.settings_json["vlm_enabled"]:
+            reasons.append("视觉理解已关闭；已有结果和日期整理仍可使用")
+        if self.person_id and not self.people.get(self.person_id):
+            reasons.append("所选人物不存在于当前家庭")
+        elif self.person_id and not self.people[self.person_id].manually_confirmed:
+            reasons.append("所选人物尚未人工确认，未生成身份叙事")
         return {
             "kind": kind,
             "title": ALBUMS[kind][0],
@@ -211,4 +364,16 @@ class MemoryAlbums:
             "match_window_days": self.window if kind == "on_this_day" else None,
             "pending_count": self.pending,
             "failed_count": self.failed,
+            "missing_date_count": missing_dates,
+            "person_id": self.person_id,
+            "period": self.period,
+            "group": self.group,
+            "revision": self.revision(kind),
+            "explanation": reasons,
+            "groups": self.groups(kind),
+            "people": [
+                {"id": person.id, "name": person.name or "已确认人物"}
+                for person in self.people.values()
+                if person.manually_confirmed and self.by_person[person.id]
+            ],
         }

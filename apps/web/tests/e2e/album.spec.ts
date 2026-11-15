@@ -298,7 +298,9 @@ test("自动相册入口、日期集合、空态及人工覆盖", async ({ page 
   });
   await page.goto("/albums/growth");
   await expect(page.locator(".photo-card")).toHaveCount(1);
-  await expect(page.getByText("人工指定的成长人物：合成家人")).toBeVisible();
+  await expect(
+    page.locator(".photo-card").getByText("人工指定的成长人物：合成家人"),
+  ).toBeVisible();
   await page.goto("/people");
   await page.getByRole("button", { name: "命名与纠错" }).click();
   await page.getByLabel("成长相册整理").selectOption("exclude");
@@ -398,4 +400,107 @@ test("本人私密照片自动整理、日期含同日和邻近日、批量共�
   ).toBe(2);
   await page.goto("/upload");
   await expect(page.getByLabel("加入家庭共享相册")).not.toBeChecked();
+});
+
+// Uses the Playwright server's temporary database, never the live family on port 8000.
+test("永久删除家庭：确认、会话失效、原账号登录及创建新家庭", async ({
+  page,
+}) => {
+  const familyName = "删除回归合成之家";
+  const registration = await page.request.post("/api/v1/auth/register", {
+    data: {
+      username: "household-delete-regression",
+      password: "delete-test-only-passphrase",
+      household_name: familyName,
+      display_name: "合成删除测试",
+    },
+  });
+  expect(registration.ok()).toBeTruthy();
+  const { csrf, household } = await registration.json();
+  const originalUser = (
+    await (await page.request.get("/api/v1/auth/me")).json()
+  ).user;
+  const headers = { "X-CSRF-Token": csrf };
+  await page.request.patch("/api/v1/settings", {
+    headers,
+    data: { embedding_enabled: false, vlm_enabled: false, ocr_enabled: false },
+  });
+  expect(
+    (await page.request.post("/api/v1/jobs/pause", { headers })).ok(),
+  ).toBeTruthy();
+  const upload = await page.request.post("/api/v1/photos/upload", {
+    headers,
+    multipart: {
+      shared: "false",
+      file: {
+        name: "synthetic-delete.jpg",
+        mimeType: "image/jpeg",
+        buffer: await readFile(
+          path.resolve("../../runtime/e2e-samples/synthetic-0001.jpg"),
+        ),
+      },
+    },
+  });
+  expect(upload.ok()).toBeTruthy();
+  await page.goto("/settings");
+  const button = page.getByRole("button", { name: "永久删除此家庭" });
+  let deleteRequests = 0;
+  page.on("request", (request) => {
+    if (request.method() === "DELETE") deleteRequests += 1;
+  });
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("prompt");
+    expect(dialog.message()).toContain(familyName);
+    await dialog.dismiss();
+  });
+  await button.click();
+  expect(deleteRequests).toBe(0);
+  page.once("dialog", (dialog) => dialog.accept("不正确的名称"));
+  await button.click();
+  expect(deleteRequests).toBe(0);
+  expect(
+    (await page.request.get(`/api/v1/households/${household.id}`)).ok(),
+  ).toBeTruthy();
+
+  page.once("dialog", (dialog) => dialog.accept(familyName));
+  const deletion = page.waitForResponse(
+    (response) =>
+      response.request().method() === "DELETE" &&
+      response.url().includes(`/households/${household.id}`),
+  );
+  await button.click();
+  expect((await deletion).status()).toBe(200);
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(
+    page.getByRole("button", { name: "登录", exact: true }),
+  ).toBeVisible();
+  expect(deleteRequests).toBe(1);
+  expect((await page.request.get("/api/v1/auth/me")).status()).toBe(401);
+  await page
+    .getByLabel("用户名", { exact: true })
+    .fill("household-delete-regression");
+  await page
+    .getByLabel("口令", { exact: true })
+    .fill("delete-test-only-passphrase");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page).toHaveURL(/\/households\/new$/);
+  await expect(
+    page.getByRole("heading", { name: "为账号创建一个新家庭" }),
+  ).toBeVisible();
+  expect((await page.request.get("/api/v1/photos")).status()).toBe(403);
+  await page.goto("/photos");
+  await expect(page).toHaveURL(/\/households\/new$/);
+  await page.getByLabel("家庭名称").fill("原账号的新测试家庭");
+  await page.getByRole("button", { name: "创建新家庭", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "让记忆，常常相见。" }),
+  ).toBeVisible();
+  const recovered = await (await page.request.get("/api/v1/auth/me")).json();
+  expect(recovered.user.id).toBe(originalUser.id);
+  expect(recovered.role).toBe("owner");
+  expect(recovered.household.id).not.toBe(household.id);
+  expect(recovered.household.name).toBe("原账号的新测试家庭");
+  expect((await (await page.request.get("/api/v1/photos")).json()).total).toBe(
+    0,
+  );
 });

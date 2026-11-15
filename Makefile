@@ -1,12 +1,26 @@
 SHELL := /bin/bash
 PY := .venv/bin/python
-.PHONY: setup dev start worker build test e2e smoke model-smoke models backup restore types sample
+.PHONY: setup dev start stop restart status status-all users photos factory-reset worker build test e2e smoke model-smoke models backup restore types sample
 setup:
 	bash scripts/setup_macos.sh
 dev:
-	$(PY) scripts/run.py --dev
+	$(PY) scripts/run.py start --dev
 start:
-	$(PY) scripts/run.py
+	$(PY) scripts/run.py start
+stop:
+	$(PY) scripts/run.py stop
+restart:
+	$(PY) scripts/run.py restart $(if $(filter 1,$(DEV)),--dev,)
+status:
+	@$(PY) scripts/manage.py status
+status-all:
+	@$(PY) scripts/manage.py status --all --json
+users:
+	@$(PY) scripts/manage.py users
+photos:
+	@$(PY) scripts/manage.py photos
+factory-reset:
+	@$(PY) scripts/manage.py factory-reset
 worker:
 	$(PY) -m app.workers.worker
 build:

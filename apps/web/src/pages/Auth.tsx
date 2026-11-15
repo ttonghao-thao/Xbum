@@ -1,9 +1,31 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Album, ArrowRight, LockKeyhole } from "lucide-react";
-import { api, setCsrf } from "../api/client";
-import { ErrorBox } from "../components/ui";
+import { api, setCsrf, type AccountAuth } from "../api/client";
+import { ErrorBox, Loading } from "../components/ui";
+function AuthArt() {
+  return (
+    <div className="auth-art">
+      <Album size={50} strokeWidth={1} />
+      <div className="auth-orbit orbit1" />
+      <div className="auth-orbit orbit2" />
+      <span className="eyebrow">EVERYDAY BECOMES A MEMORY</span>
+      <h1>
+        有些瞬间，
+        <br />
+        值得一看再看。
+      </h1>
+      <p>
+        从一张照片开始，
+        <br />
+        把那些细小的幸福，慢慢收好。
+      </p>
+      <small>家庭共享 · 本地 AI · 你的记忆由你保管</small>
+    </div>
+  );
+}
+
 export function AuthPage({
   mode,
 }: {
@@ -26,14 +48,14 @@ export function AuthPage({
     setError(undefined);
     const data = Object.fromEntries(new FormData(e.currentTarget));
     try {
-      const result = await api<{ csrf: string }>(
+      const result = await api<{ csrf: string; needs_household?: boolean }>(
         mode === "invite" ? `/invites/${code}/join` : "/auth/" + mode,
         "POST",
         data,
       );
       setCsrf(result.csrf);
       qc.clear();
-      navigate("/");
+      navigate(result.needs_household ? "/households/new" : "/");
     } catch (error) {
       setError(error);
     } finally {
@@ -50,23 +72,7 @@ export function AuthPage({
           : "欢迎回到家";
   return (
     <div className="auth-page">
-      <div className="auth-art">
-        <Album size={50} strokeWidth={1} />
-        <div className="auth-orbit orbit1" />
-        <div className="auth-orbit orbit2" />
-        <span className="eyebrow">EVERYDAY BECOMES A MEMORY</span>
-        <h1>
-          有些瞬间，
-          <br />
-          值得一看再看。
-        </h1>
-        <p>
-          从一张照片开始，
-          <br />
-          把那些细小的幸福，慢慢收好。
-        </p>
-        <small>家庭共享 · 本地 AI · 你的记忆由你保管</small>
-      </div>
+      <AuthArt />
       <section className="auth-form">
         <Link to="/" className="brand">
           <Album size={30} />
@@ -148,6 +154,88 @@ export function AuthPage({
         ) : (
           <Link to="/login">已有账号？返回登录</Link>
         )}
+      </section>
+    </div>
+  );
+}
+
+export function CreateHousehold() {
+  const navigate = useNavigate();
+  const query = useQueryClient();
+  const [error, setError] = useState<unknown>();
+  const [pending, setPending] = useState(false);
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api<AccountAuth>("/auth/me"),
+    retry: false,
+  });
+  useEffect(() => {
+    if (me.data) setCsrf(me.data.csrf);
+  }, [me.data]);
+  if (me.isPending) return <Loading />;
+  if (me.error) return <Navigate to="/login" replace />;
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPending(true);
+    setError(undefined);
+    try {
+      const name = new FormData(e.currentTarget).get("name");
+      const result = await api<{ csrf: string }>("/households", "POST", {
+        name,
+      });
+      setCsrf(result.csrf);
+      query.clear();
+      navigate("/");
+    } catch (error) {
+      setError(error);
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <div className="auth-page">
+      <AuthArt />
+      <section className="auth-form">
+        <Link to="/" className="brand">
+          <Album size={30} />
+          Xbum
+        </Link>
+        <h2>为账号创建一个新家庭</h2>
+        <p>
+          {me.data.user.display_name}
+          ，你已登录。账号和原口令仍然有效，创建新家庭即可继续使用相册。
+        </p>
+        <p>也可以打开家人发来的邀请链接，用当前账号加入已有家庭。</p>
+        <form onSubmit={submit}>
+          <label>
+            家庭名称
+            <input
+              name="name"
+              required
+              maxLength={100}
+              placeholder="我们的家"
+            />
+          </label>
+          {error !== undefined && <ErrorBox error={error} />}
+          <button className="primary" disabled={pending}>
+            {pending ? "正在创建…" : "创建新家庭"}
+          </button>
+        </form>
+        <button
+          disabled={pending}
+          onClick={async () => {
+            try {
+              await api("/auth/logout", "POST");
+              setCsrf("");
+              query.clear();
+              navigate("/login");
+            } catch (error) {
+              setError(error);
+            }
+          }}
+        >
+          退出登录
+        </button>
       </section>
     </div>
   );

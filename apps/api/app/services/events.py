@@ -22,6 +22,10 @@ def event_payload(db, event, allowed=None):
         if any(pid in allowed for pid in s["photo_ids"])
     ]
     value["cover_photo_id"] = event.cover_photo_id if event.cover_photo_id in ids else ids[0] if ids else None
+    value["organization_reasons"] = [
+        "人工确认的分组，自动分析不会覆盖" if event.locked else "以可信拍摄时间分组，参考位置、视觉与人物共现线索",
+        "照片中的城市与人物关系不会由模型自动认定",
+    ]
     return value
 
 
@@ -108,8 +112,13 @@ def cluster_events(db, household):
             if p.id in analyses and analyses[p.id].analysis_json.get("confidence", 0) >= 0.5
         ]
         event.event_type = max(sorted(set(types)), key=types.count) if types else "daily"
-        event.title = f"{local_date(group[0])} · 家庭记忆"
-        event.cover_photo_id = group[0].id
+        labels = {"travel": "旅行画面", "outing": "出游画面", "birthday": "生日画面", "festival": "节日画面"}
+        theme = labels.get(event.event_type, "家庭记忆")
+        event.title = f"{local_date(group[0])} · {theme}" + ("（候选）" if event.event_type in labels else "")
+        from app.services.albums import select_highlights
+
+        cover = select_highlights(db, group, limit=1)
+        event.cover_photo_id = cover[0].id
         event.confidence = 0.65 if len(group) > 1 else 0.35
         event.participants_json = sorted(set().union(*(people[p.id] for p in group)))
         segments = defaultdict(list)

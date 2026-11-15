@@ -9,6 +9,7 @@ from app.api.schemas import Credentials, HouseholdPatch, InviteInput, Login, Rol
 from app.core.config import defaults, settings
 from app.core.security import (
     Actor,
+    account_current,
     audit,
     current,
     digest,
@@ -94,27 +95,30 @@ def login(payload: Login, request: Request, response: Response, db: DB = Depends
     if payload.household_id:
         query = query.where(Membership.household_id == payload.household_id)
     membership = db.scalar(query.order_by(Membership.id))
-    if not membership:
+    if not membership and payload.household_id:
         raise HTTPException(403, "没有有效家庭成员资格")
-    csrf = login_session(db, response, user, membership.household_id)
-    audit(db, Actor(user.id, membership.household_id, membership.role), "login")
+    hid = membership.household_id if membership else None
+    role = membership.role if membership else "account"
+    csrf = login_session(db, response, user, hid)
+    audit(db, Actor(user.id, hid, role), "login")
     db.commit()
-    return {"csrf": csrf, "role": membership.role}
+    return {"csrf": csrf, "role": role, "needs_household": membership is None}
 
 
 @router.get("/auth/me")
-def me(actor=Depends(current), db: DB = Depends(get_db)):
+def me(actor=Depends(account_current), db: DB = Depends(get_db)):
     return {
         "user": serialize(db.get(User, actor.user_id)),
         "role": actor.role,
         "csrf": actor.csrf,
-        "household": serialize(db.get(Household, actor.household_id)),
+        "household": serialize(db.get(Household, actor.household_id)) if actor.household_id else None,
+        "needs_household": actor.household_id is None,
         "capabilities": {"max_upload_mb": settings.max_upload_mb},
     }
 
 
 @router.post("/auth/logout")
-def logout(request: Request, response: Response, actor=Depends(current), db: DB = Depends(get_db)):
+def logout(request: Request, response: Response, actor=Depends(account_current), db: DB = Depends(get_db)):
     db.execute(delete(Session).where(Session.token_hash == digest(request.cookies.get("xbum_session", ""))))
     db.commit()
     response.delete_cookie("xbum_session")
@@ -125,7 +129,7 @@ def logout(request: Request, response: Response, actor=Depends(current), db: DB 
 def households(
     page: int = Query(1, ge=1),
     page_size: int = Query(40, ge=1, le=100),
-    actor=Depends(current),
+    actor=Depends(account_current),
     db: DB = Depends(get_db),
 ):
     items = list(
@@ -137,7 +141,9 @@ def households(
 
 
 @router.post("/households")
-def create_household(payload: HouseholdPatch, response: Response, actor=Depends(current), db: DB = Depends(get_db)):
+def create_household(
+    payload: HouseholdPatch, response: Response, actor=Depends(account_current), db: DB = Depends(get_db)
+):
     h = Household(name=payload.name or "我们的家", timezone=payload.timezone or settings.default_household_timezone)
     db.add(h)
     db.flush()
@@ -299,11 +305,15 @@ def remove_member(mid: str, actor=Depends(owner), db: DB = Depends(get_db)):
 
 @router.delete("/households/{hid}")
 def delete_household(hid: str, confirm: str, actor=Depends(owner), db: DB = Depends(get_db)):
-    from app.core.security import scoped
     from app.services.storage import storage
     import shutil
 
-    h = scoped(db, Household, hid, actor)
+    # A household is the scope root: unlike its children it has no household_id.
+    h = db.get(Household, hid)
+    if not h or h.id != actor.household_id:
+        audit(db, actor, "access_denied", "households", hid)
+        db.commit()
+        raise HTTPException(404, "家庭不存在或没有权限")
     if confirm != h.name:
         raise HTTPException(409, "须以完整家庭名称二次确认")
     path = storage.read_media(hid)

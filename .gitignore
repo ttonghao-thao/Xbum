@@ -20,6 +20,7 @@ playwright-report/
 *.egg-info/
 *.tsbuildinfo
 data.before-restore-*/
+xbum-reset-*/
 *.sqlite3*
 apps/web/src/api/schema.d.ts
 runtime/

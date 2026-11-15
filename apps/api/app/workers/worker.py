@@ -201,9 +201,9 @@ def run_job(db, job, provider=isolated_provider):
             return
         # Biometric consent applies only to explicitly family-shared photos.
         enabled = config.get(
-            {"embedding": "embedding_enabled", "vlm": "vlm_enabled", "faces": "faces_enabled"}.get(kind, ""), True
+            {"embedding": "embedding_enabled", "vlm": "vlm_enabled", "faces": "faces_enabled", "ocr": "ocr_enabled"}.get(kind, ""), True
         )
-        if not enabled or (kind == "faces" and (target.visibility != "family" or target.is_hidden)):
+        if not enabled or (kind in {"faces", "ocr"} and (target.visibility != "family" or target.is_hidden)):
             job.state, job.duration_ms = "skipped", 0
             db.commit()
             return
@@ -211,7 +211,9 @@ def run_job(db, job, provider=isolated_provider):
             select(PhotoDerivative).where(PhotoDerivative.photo_id == target.id, PhotoDerivative.variant == "960")
         )
         path = storage.read_media(derivative.storage_key)
-        if kind in {"embedding", "vlm", "faces"}:
+        if kind == "ocr":
+            path = storage.read_media(target.storage_key)
+        if kind in {"embedding", "vlm", "faces", "ocr"}:
             db.commit()  # No database write lock while a model runs.
             result = provider(kind, path=str(path.resolve()))
         elif kind == "metadata":
@@ -243,6 +245,18 @@ def run_job(db, job, provider=isolated_provider):
         result["event_count"] = cluster_events(db, h)
     elif kind == "recommendation":
         result["playlist_id"] = build_daily_playlist(db, h).id
+    elif kind == "story_compose":
+        from app.services.stories import compose_story
+
+        target = db.get(Story, job.target_id)
+        if not target:
+            job.state = "cancelled"
+            db.commit()
+            return
+        if not compose_story(db, target):
+            job.state = "skipped"
+            db.commit()
+            return
     elif kind == "export":
         target = db.get(Story, job.target_id)
         if not target:
@@ -308,6 +322,22 @@ def run_job(db, job, provider=isolated_provider):
                 analysis.model_name, analysis.model_version = settings.vlm_model, result["version"]
                 analysis.status, job.model_version = "succeeded", result["version"]
                 analysis.pipeline_version = VISION_CONTRACT_VERSION
+            elif kind == "ocr":
+                from app.db.collection_features import PhotoText
+
+                if not h.settings_json.get("ocr_enabled", True) or not target.visibility == "family" or target.is_hidden:
+                    job.state = "skipped"
+                    db.commit()
+                    return
+                text_record = db.scalar(select(PhotoText).where(PhotoText.photo_id == target.id))
+                if not text_record:
+                    text_record = PhotoText(photo_id=target.id)
+                    db.add(text_record)
+                text_record.text = result["text"]
+                text_record.regions_json = result["regions"]
+                text_record.model_version = result["version"]
+                text_record.updated_at = now()
+                job.model_version = result["version"]
             elif (
                 kind == "faces"
                 and h.settings_json["faces_enabled"]
@@ -358,6 +388,9 @@ def run_job(db, job, provider=isolated_provider):
 def schedule(db):
     for h in db.scalars(select(Household)):
         reconcile_vision(db, h)
+        from app.ai.ocr import reconcile_ocr
+
+        reconcile_ocr(db, h)
         local = local_now(h.timezone)
         if local.hour >= h.settings_json["daily_generation_hour"]:
             enqueue(

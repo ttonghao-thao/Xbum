@@ -38,6 +38,9 @@ export function StoryPlayer({
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [sound, setSound] = useState(false);
+  const [audioError, setAudioError] = useState("");
+  const audio = useRef<HTMLAudioElement>(null);
   const started = useRef(performance.now());
   const slide = story.slides[index];
   const next = useCallback(() => {
@@ -52,11 +55,32 @@ export function StoryPlayer({
       if (playing && loaded && slide) {
         const value = (performance.now() - started.current) / 1000;
         setElapsed(value);
-        if (value >= slide.duration_s) next();
+        const waitingForVoice =
+          sound &&
+          slide.narration_url &&
+          audio.current &&
+          !audio.current.ended &&
+          !audioError;
+        if (value >= slide.duration_s && !waitingForVoice) next();
       }
     }, 100);
     return () => clearInterval(handle);
-  }, [playing, loaded, slide, next]);
+  }, [playing, loaded, slide, next, sound, audioError]);
+  useEffect(() => {
+    const element = audio.current;
+    if (!element) return;
+    if (playing && loaded && sound && !error) {
+      void element
+        .play()
+        .catch(() =>
+          setAudioError("原声暂未开始，请再次点击开启原声或继续静音观看。"),
+        );
+    } else element.pause();
+    return () => element.pause();
+  }, [playing, loaded, sound, index, error]);
+  useEffect(() => {
+    setAudioError("");
+  }, [index]);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if (e.code === "Space") {
@@ -134,6 +158,19 @@ export function StoryPlayer({
           </div>
           <div className="story-caption">
             <p>{slide.caption}</p>
+            {slide.narration_transcript && (
+              <p className="muted">家人口述：{slide.narration_transcript}</p>
+            )}
+            {slide.narration_url && (
+              <audio
+                key={slide.narration_url}
+                ref={audio}
+                src={slide.narration_url + (display ? "?display=1" : "")}
+                preload="none"
+                onError={() => setAudioError("原声暂不可用，可继续静音观看。")}
+              />
+            )}
+            {audioError && <p role="status">{audioError}</p>}
             {index === story.slides.length - 1 && <small>{story.ending}</small>}
           </div>
         </>
@@ -159,6 +196,16 @@ export function StoryPlayer({
         <span>
           {index + 1} / {story.slides.length}
         </span>
+        {slide.narration_url && (
+          <button
+            onClick={() => {
+              setAudioError("");
+              setSound((v) => !v);
+            }}
+          >
+            {sound ? "关闭原声" : "开启原声"}
+          </button>
+        )}
         <button
           aria-label="下一页故事"
           disabled={index === story.slides.length - 1}

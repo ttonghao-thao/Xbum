@@ -44,10 +44,15 @@ from app.services.calendar import is_quiet, local_now
 from app.services.recommendations import build_daily_playlist, playlist_payload
 from app.services.storage import storage
 from app.services.stories import story_access
-from app.services.system import model_status
+from app.services.system import model_status, processing_status
 from app.workers.queue import enqueue, enqueue_photo
 
 router = APIRouter()
+
+
+@router.get("/system/processing")
+def processing(actor=Depends(current), db: DB = Depends(get_db)):
+    return processing_status(household(db, actor))
 
 
 def latest_playlist(db, h, day):

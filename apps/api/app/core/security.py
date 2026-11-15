@@ -53,31 +53,41 @@ def audit(db, actor, action, object_type="request", object_id="", metadata=None)
 @dataclass
 class Actor:
     user_id: str | None
-    household_id: str
+    household_id: str | None
     role: str
     csrf: str = ""
     device_id: str | None = None
 
 
-def current(request: Request, db: DB = Depends(get_db)):
+def account_current(request: Request, db: DB = Depends(get_db)):
     token = request.cookies.get("xbum_session", "")
     session = db.scalar(select(Session).where(Session.token_hash == digest(token), Session.expires_at > now()))
     if not session:
         raise HTTPException(401, "请先登录")
-    member = db.scalar(
-        select(Membership).where(
-            Membership.household_id == session.household_id,
-            Membership.user_id == session.user_id,
-            Membership.status == "active",
+    role = "account"
+    if session.household_id is not None:
+        member = db.scalar(
+            select(Membership).where(
+                Membership.household_id == session.household_id,
+                Membership.user_id == session.user_id,
+                Membership.status == "active",
+            )
         )
-    )
-    if not member:
-        raise HTTPException(401, "家庭成员资格已撤销")
-    actor = Actor(session.user_id, session.household_id, member.role, session.csrf)
+        if not member:
+            raise HTTPException(401, "家庭成员资格已撤销")
+        role = member.role
+    actor = Actor(session.user_id, session.household_id, role, session.csrf)
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         if not secrets.compare_digest(request.headers.get("x-csrf-token", ""), session.csrf):
             raise HTTPException(403, "CSRF 校验失败，请刷新登录状态")
     request.state.actor = actor
+    return actor
+
+
+def current(request: Request, db: DB = Depends(get_db)):
+    actor = account_current(request, db)
+    if actor.household_id is None:
+        raise HTTPException(403, "请先创建或加入一个家庭")
     return actor
 
 

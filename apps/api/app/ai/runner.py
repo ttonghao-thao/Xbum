@@ -37,6 +37,10 @@ def main():
         elif kind == "asr":
             provider = WhisperCpp()
             result = {"transcript": provider.transcribe(Path(request["path"])), "version": provider.version}
+        elif kind == "ocr":
+            from app.ai.ocr import recognize
+
+            result = recognize(Path(request["path"]))
         else:
             raise ValueError("unknown provider")
         output.write_text(json.dumps({"ok": True, **result}, ensure_ascii=False))

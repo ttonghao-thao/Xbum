@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -8,7 +8,6 @@ import {
   Film,
   Play,
   Plus,
-  Search as SearchIcon,
   X,
 } from "lucide-react";
 import {
@@ -16,7 +15,6 @@ import {
   type FamilyEvent,
   type Job,
   type List,
-  type Person,
   type Photo,
   type Slide,
   type Story,
@@ -27,13 +25,15 @@ import {
   Loading,
   PageTitle,
   Pagination,
-  PhotoGrid,
   move,
   useAuth,
   useNotice,
 } from "../components/ui";
-import { AudioRecorder } from "../components/Audio";
 import { StoryPlayer } from "./Display";
+import {
+  StoryEnhancements,
+  MemorySuggestions,
+} from "../components/StoryEnhancements";
 
 export function Stories() {
   const [page, setPage] = useState(1);
@@ -55,6 +55,7 @@ export function Stories() {
         title="把照片，连成家的故事"
         description="以真实的照片与人工说明为基础，编排一段可以一看再看的家庭纪录片。"
       />
+      <MemorySuggestions />
       {auth.role !== "viewer" && (
         <div className="panel filters">
           <select
@@ -154,6 +155,8 @@ export function StoryEdit() {
   const query = useQuery({
     queryKey: ["story", id],
     queryFn: () => api<Story>("/stories/" + id),
+    refetchInterval: (q) =>
+      q.state.data?.composition?.state === "queued" ? 2000 : false,
   });
   const [story, setStory] = useState<Story | null>(null);
   const [preview, setPreview] = useState(false);
@@ -186,6 +189,7 @@ export function StoryEdit() {
   if (query.error) return <ErrorBox error={query.error} />;
   if (!story) return <Loading />;
   const draft = story;
+  const composing = draft.composition?.state === "queued";
   function slidePatch(index: number, key: keyof Slide, value: unknown) {
     setStory((s) =>
       s
@@ -229,6 +233,41 @@ export function StoryEdit() {
         label="返回故事列表"
       />
     );
+  if (composing)
+    return (
+      <>
+        <PageTitle
+          title="正在编排这段记忆"
+          description="系统正在挑选代表照片并按日期组织章节，完成后即可编辑。"
+          actions={
+            <Link className="button" to="/stories">
+              返回故事列表
+            </Link>
+          }
+        />
+        {draft.composition?.job_state === "failed" ? (
+          <div className="panel">
+            <ErrorBox
+              error={draft.composition.error_message || "本地编排失败，请重试"}
+            />
+            <button
+              onClick={async () => {
+                try {
+                  await api(`/jobs/${draft.composition?.job_id}/retry`, "POST");
+                  await query.refetch();
+                } catch (e) {
+                  notify((e as Error).message);
+                }
+              }}
+            >
+              重试故事编排
+            </button>
+          </div>
+        ) : (
+          <Loading />
+        )}
+      </>
+    );
   return (
     <>
       <PageTitle
@@ -246,6 +285,24 @@ export function StoryEdit() {
           </>
         }
       />
+      <StoryEnhancements storyId={id} onUpdated={() => void query.refetch()} />
+      {draft.composition && (
+        <div className="panel">
+          <h2>故事编排</h2>
+          <p>
+            {draft.composition.state === "queued"
+              ? "正在本地挑选照片与组织章节，完成后自动更新。"
+              : draft.composition.state === "ready"
+                ? "已按日期与画面多样性编排，文案来自可追溯事实。"
+                : "编排已停止，保留人工修改。"}
+          </p>
+          {draft.composition.chapters?.map((c) => (
+            <span className="pill" key={c.title}>
+              {c.title} · {c.photo_ids.length} 张
+            </span>
+          ))}
+        </div>
+      )}
       <section className="panel form-grid">
         <label>
           故事标题
@@ -479,219 +536,6 @@ export function StoryEdit() {
       </button>
       {preview && (
         <StoryPlayer story={draft} onClose={() => setPreview(false)} />
-      )}
-    </>
-  );
-}
-
-interface SearchResult extends List<Photo> {
-  query_id: string | null;
-  job_id: string | null;
-  semantic_state: string;
-  time_basis: string;
-  unknown_conditions: string[];
-}
-export function Search() {
-  const [text, setText] = useState("");
-  const [filters, setFilters] = useState({
-    start: "",
-    end: "",
-    person_id: "",
-    event_id: "",
-    location: "",
-  });
-  const [active, setActive] = useState<Record<string, unknown> | null>(null);
-  const queryId = useRef<string | null>(null);
-  const [page, setPage] = useState(1);
-  const people = useQuery({
-    queryKey: ["search-people"],
-    queryFn: () => api<List<Person>>("/people?page_size=100"),
-  });
-  const events = useQuery({
-    queryKey: ["search-events"],
-    queryFn: () => api<List<FamilyEvent>>("/events?page_size=100"),
-  });
-  const query = useQuery({
-    queryKey: ["search", active, page],
-    queryFn: async () => {
-      const r = await api<SearchResult>("/search", "POST", {
-        ...active,
-        page,
-        ...(queryId.current ? { query_id: queryId.current } : {}),
-      });
-      queryId.current = r.query_id;
-      return r;
-    },
-    enabled: active !== null,
-    refetchInterval: (q) =>
-      q.state.data &&
-      ["queued", "retry", "running"].includes(q.state.data.semantic_state)
-        ? 3000
-        : false,
-  });
-  function submit(e?: FormEvent) {
-    e?.preventDefault();
-    queryId.current = null;
-    setPage(1);
-    setActive({
-      query: text,
-      semantic: true,
-      ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)),
-    });
-  }
-  return (
-    <>
-      <PageTitle
-        title="你想起了，哪一段时光？"
-        description="用一句话，或一段声音，寻找留在家里的记忆。结果会告诉你匹配的依据。"
-      />
-      <form className="panel search-panel" onSubmit={submit}>
-        <div className="search-bar">
-          <SearchIcon size={23} />
-          <input
-            aria-label="搜索家庭记忆"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="试试「去年春节的合影」或「海边的照片」"
-            maxLength={500}
-          />
-          <button className="primary">寻找记忆</button>
-        </div>
-        <div className="filters">
-          <label>
-            开始日期
-            <input
-              type="date"
-              value={filters.start}
-              onChange={(e) =>
-                setFilters({ ...filters, start: e.target.value })
-              }
-            />
-          </label>
-          <label>
-            结束日期
-            <input
-              type="date"
-              value={filters.end}
-              onChange={(e) => setFilters({ ...filters, end: e.target.value })}
-            />
-          </label>
-          <label>
-            人物
-            <select
-              value={filters.person_id}
-              onChange={(e) =>
-                setFilters({ ...filters, person_id: e.target.value })
-              }
-            >
-              <option value="">所有已确认人物</option>
-              {people.data?.items
-                .filter((p) => p.manually_confirmed)
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label>
-            事件
-            <select
-              value={filters.event_id}
-              onChange={(e) =>
-                setFilters({ ...filters, event_id: e.target.value })
-              }
-            >
-              <option value="">所有事件</option>
-              {events.data?.items.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            地点
-            <input
-              value={filters.location}
-              onChange={(e) =>
-                setFilters({ ...filters, location: e.target.value })
-              }
-              placeholder="人工地点"
-            />
-          </label>
-        </div>
-      </form>
-      <details className="panel">
-        <summary>用本地语音寻找记忆</summary>
-        <AudioRecorder
-          search
-          onText={(value) => {
-            setText(value);
-          }}
-        />
-        <p className="muted">校对转写结果并使用文字后，再点击「寻找记忆」。</p>
-      </details>
-      {!active ? (
-        <Empty
-          title="有些记忆，只差一句话"
-          text="也可以选择人物、事件、日期或真实地点。未知时间的照片不会假装成往年回忆。"
-          action=""
-        />
-      ) : query.isPending ? (
-        <Loading />
-      ) : query.error ? (
-        <ErrorBox error={query.error} />
-      ) : (
-        query.data && (
-          <>
-            <div className="section-heading">
-              <h2>找到 {query.data.total} 个候选瞬间</h2>
-              <span>
-                {query.data.time_basis}
-                {["queued", "running", "retry"].includes(
-                  query.data.semantic_state,
-                )
-                  ? " · 本地图文编码正在排队"
-                  : " · " +
-                    (query.data.semantic_state === "failed"
-                      ? "语义模型不可用，已显示文字匹配"
-                      : "文字 / 语义检索")}
-              </span>
-            </div>
-            {query.data.unknown_conditions.map((s) => (
-              <p className="note" key={s}>
-                {s}
-              </p>
-            ))}
-            {query.data.items.length ? (
-              <>
-                <PhotoGrid photos={query.data.items} />
-                <div className="match-reasons">
-                  {query.data.items.map((p) => (
-                    <p key={p.id}>
-                      <Link to={"/photos/" + p.id}>
-                        {p.title || p.id.slice(0, 8)}
-                      </Link>
-                      ：{p.match_reasons?.join(" · ")}
-                    </p>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <Empty
-                title="还没有找到这段记忆"
-                text="可以放宽日期、移除人物条件，或换一个关键词。没有匹配时，我们不会制造回忆。"
-                action=""
-              />
-            )}
-            <Pagination
-              page={page}
-              total={query.data.total}
-              onChange={setPage}
-            />
-          </>
-        )
       )}
     </>
   );

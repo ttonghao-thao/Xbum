@@ -79,7 +79,7 @@ class Session(Identity, Base):
     __tablename__ = "sessions"
     token_hash: Mapped[str] = mapped_column(unique=True)
     user_id: Mapped[str] = fk("users")
-    household_id: Mapped[str] = fk("households")
+    household_id: Mapped[str | None] = fk("households", nullable=True)
     csrf: Mapped[str]
     expires_at: Mapped[str]
 
@@ -366,3 +366,7 @@ SENSITIVE = {
 
 def serialize(obj, exclude=()):
     return {c.name: getattr(obj, c.name) for c in obj.__table__.columns if c.name not in SENSITIVE | set(exclude)}
+
+
+# Register optional feature tables after the shared identity and core models.
+from app.db import album_features, collection_features, story_features  # noqa: E402,F401

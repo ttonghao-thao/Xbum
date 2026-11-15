@@ -1,5 +1,6 @@
 import importlib.util
 import io
+import json
 import os
 import sqlite3
 import subprocess
@@ -9,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from app.core.config import Settings
+from app.core.config import Settings, defaults
 from app.db.models import Household
 from app.db.session import SessionLocal, engine
 from app.services.storage import storage
@@ -70,6 +71,44 @@ def test_real_alembic_upgrade_downgrade_upgrade(tmp_path):
         tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"photos", "faces", "jobs", "story_slides", "audio_memories", "alembic_version"} <= tables
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_account_session_migration_preserves_rows_and_household_cascade(tmp_path):
+    database = tmp_path / "sessions" / "album.sqlite3"
+    env = {**os.environ, "DATA_DIR": str(database.parent), "DATABASE_URL": f"sqlite:///{database}"}
+
+    def migrate(*args):
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", *args], cwd=ROOT, env=env, text=True, capture_output=True
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    migrate("upgrade", "2c4fd91d801a")
+    with sqlite3.connect(database) as db:
+        db.execute("INSERT INTO users VALUES ('legacy', '旧测试用户', 'synthetic-not-real-hash', '2026-01-01', 'u')")
+        db.execute(
+            "INSERT INTO households VALUES ('旧测试家庭', 'Asia/Shanghai', ?, '2026-01-01', 1, 'h')",
+            (json.dumps(defaults()),),
+        )
+        db.execute(
+            "INSERT INTO sessions VALUES ('synthetic-token-hash', 'u', 'h', 'synthetic-csrf', '2099-01-01', 's')"
+        )
+        old = db.execute("SELECT * FROM sessions").fetchall()
+    migrate("upgrade", "head")
+    with sqlite3.connect(database) as db:
+        db.execute("PRAGMA foreign_keys=ON")
+        assert db.execute("SELECT * FROM sessions").fetchall() == old
+        assert db.execute("SELECT count(*) FROM users").fetchone()[0] == 1
+        db.execute("INSERT INTO sessions VALUES ('account-token-hash', 'u', NULL, 'synthetic-csrf', '2099-01-01', 'a')")
+        db.execute("DELETE FROM households WHERE id='h'")
+        assert db.execute("SELECT id FROM sessions").fetchall() == [("a",)]
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    migrate("downgrade", "2c4fd91d801a")
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT count(*) FROM sessions").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM users").fetchone()[0] == 1
+    migrate("upgrade", "head")
+    migrate("check")
 
 
 def test_inference_endpoint_cannot_target_external_hosts():

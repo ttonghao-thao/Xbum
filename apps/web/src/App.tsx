@@ -26,7 +26,7 @@ import {
   Upload as UploadIcon,
   Users,
 } from "lucide-react";
-import { api, setCsrf, type Auth } from "./api/client";
+import { api, setCsrf, type AccountAuth } from "./api/client";
 import {
   AuthContext,
   ErrorBox,
@@ -34,11 +34,18 @@ import {
   useAuth,
   useNotice,
 } from "./components/ui";
-import { AuthPage } from "./pages/Auth";
+import { AuthPage, CreateHousehold } from "./pages/Auth";
 import { Home, PhotoDetail, Photos, Upload } from "./pages/Library";
 import { Album as MemoryAlbumPage } from "./pages/Albums";
 import { EventDetail, Events, People, Timeline } from "./pages/Memory";
-import { Stories, StoryEdit, Search } from "./pages/Stories";
+import { Stories, StoryEdit } from "./pages/Stories";
+import {
+  DiscoverSearch,
+  Collections,
+  CollectionDetail,
+} from "./pages/Discover";
+import { Preferences } from "./pages/Preferences";
+import { Duplicates } from "./pages/Duplicates";
 import { Jobs, Settings } from "./pages/Admin";
 import { Display } from "./pages/Display";
 
@@ -50,6 +57,9 @@ const nav = [
   ["/timeline", "成长时间线", CalendarDays],
   ["/stories", "照片故事", BookOpen],
   ["/search", "寻找记忆", SearchIcon],
+  ["/collections", "智能相册", Album],
+  ["/duplicates", "相似照片", Image],
+  ["/preferences", "推荐偏好", Heart],
 ] as const;
 function Shell() {
   const auth = useAuth();
@@ -190,13 +200,15 @@ function Arrow() {
 function Protected() {
   const me = useQuery({
     queryKey: ["me"],
-    queryFn: () => api<Auth>("/auth/me"),
+    queryFn: () => api<AccountAuth>("/auth/me"),
   });
   useEffect(() => {
     if (me.data) setCsrf(me.data.csrf);
   }, [me.data]);
   if (me.isPending) return <Loading />;
   if (me.error) return <Navigate to="/login" replace />;
+  if (me.data.role === "account")
+    return <Navigate to="/households/new" replace />;
   return (
     <AuthContext.Provider value={me.data}>
       <Shell />
@@ -209,6 +221,7 @@ export default function App() {
       <Route path="/setup" element={<AuthPage mode="setup" />} />
       <Route path="/login" element={<AuthPage mode="login" />} />
       <Route path="/register" element={<AuthPage mode="register" />} />
+      <Route path="/households/new" element={<CreateHousehold />} />
       <Route path="/invite/:code" element={<AuthPage mode="invite" />} />
       <Route path="/display" element={<Display />} />
       <Route element={<Protected />}>
@@ -223,7 +236,11 @@ export default function App() {
         <Route path="timeline" element={<Timeline />} />
         <Route path="stories" element={<Stories />} />
         <Route path="stories/:id/edit" element={<StoryEdit />} />
-        <Route path="search" element={<Search />} />
+        <Route path="search" element={<DiscoverSearch />} />
+        <Route path="collections" element={<Collections />} />
+        <Route path="collections/:id" element={<CollectionDetail />} />
+        <Route path="duplicates" element={<Duplicates />} />
+        <Route path="preferences" element={<Preferences />} />
         <Route path="settings" element={<Settings />} />
         <Route path="jobs" element={<Jobs />} />
         <Route

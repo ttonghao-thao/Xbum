@@ -1,11 +1,9 @@
 import json
 import io
-from datetime import date
-from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DB
 from PIL import Image
 
@@ -41,7 +39,6 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.services.photos import family_candidates, photo_payload
-from app.services.albums import ALBUMS, MemoryAlbums
 from app.services.events import event_payload
 from app.services.search import search
 from app.services.storage import storage
@@ -49,61 +46,6 @@ from app.services.stories import create_draft, story_access, story_payload
 from app.workers.queue import enqueue, enqueue_coalesced
 
 router = APIRouter()
-
-
-def private_photo_count(db, actor):
-    return db.scalar(
-        select(func.count())
-        .select_from(Photo)
-        .where(
-            Photo.household_id == actor.household_id,
-            Photo.uploader_id == actor.user_id,
-            Photo.visibility == "private",
-            Photo.is_hidden.is_(False),
-            Photo.is_deleted.is_(False),
-        )
-    )
-
-
-@router.get("/albums")
-def albums(scope: Literal["visible", "family"] = "visible", actor=Depends(current), db: DB = Depends(get_db)):
-    index = MemoryAlbums(db, household(db, actor), actor=actor if scope == "visible" else None)
-    return {
-        "scope": scope,
-        "private_photo_count": private_photo_count(db, actor),
-        "items": [
-            {
-                **index.metadata(kind),
-                "cover": photo_payload(db, index.rows[kind][0]["photo"]) if index.rows[kind] else None,
-            }
-            for kind in ALBUMS
-        ],
-    }
-
-
-@router.get("/albums/{kind}")
-def album(
-    kind: Literal["on_this_day", "growth", "travel"],
-    day: date | None = None,
-    scope: Literal["visible", "family"] = "visible",
-    page: int = Query(1, ge=1),
-    page_size: int = Query(40, ge=1, le=100),
-    actor=Depends(current),
-    db: DB = Depends(get_db),
-):
-    index = MemoryAlbums(db, household(db, actor), day, actor=actor if scope == "visible" else None)
-    rows = index.rows[kind]
-    return {
-        **index.metadata(kind),
-        "scope": scope,
-        "private_photo_count": private_photo_count(db, actor),
-        "items": [
-            {**photo_payload(db, row["photo"]), **{k: v for k, v in row.items() if k != "photo"}}
-            for row in rows[(page - 1) * page_size : page * page_size]
-        ],
-        "page": page,
-        "page_size": page_size,
-    }
 
 
 @router.get("/faces/{fid}/media")

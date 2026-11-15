@@ -252,6 +252,58 @@ export function Settings() {
             onChange={(v) => update("speech_enabled", v)}
           />
           <Check
+            label="启用本地图片文字识别（Apple Vision）"
+            checked={config.ocr_enabled ?? true}
+            onChange={(v) => update("ocr_enabled", v)}
+          />
+          <div className="form-grid">
+            <label>
+              后台分析开始小时
+              <input
+                type="number"
+                min="0"
+                max="23"
+                value={config.background_start_hour ?? 0}
+                onChange={(e) =>
+                  update("background_start_hour", +e.target.value)
+                }
+              />
+            </label>
+            <label>
+              后台分析结束小时
+              <input
+                type="number"
+                min="0"
+                max="23"
+                value={config.background_end_hour ?? 0}
+                onChange={(e) => update("background_end_hour", +e.target.value)}
+              />
+            </label>
+            <label>
+              保留可用内存（MB）
+              <input
+                type="number"
+                min="0"
+                max="65536"
+                value={config.min_free_memory_mb ?? 512}
+                onChange={(e) => update("min_free_memory_mb", +e.target.value)}
+              />
+            </label>
+            <label>
+              保留可用磁盘（MB）
+              <input
+                type="number"
+                min="0"
+                max="1048576"
+                value={config.min_free_disk_mb ?? 1024}
+                onChange={(e) => update("min_free_disk_mb", +e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="muted">
+            开始与结束相同表示全天允许。资源不足时暂停领取新重任务，已经运行的任务继续完成；文本查询和基础浏览保持可用。
+          </p>
+          <Check
             label="启用人脸检测与候选聚类"
             checked={config.faces_enabled}
             onChange={(v) => update("faces_enabled", v)}
@@ -793,6 +845,11 @@ export function Jobs() {
   const notify = useNotice();
   const [state, setState] = useState("");
   const [page, setPage] = useState(1);
+  const processing = useQuery({
+    queryKey: ["processing"],
+    queryFn: () => api<{ reasons: string[] }>("/system/processing"),
+    refetchInterval: 5000,
+  });
   const query = useQuery({
     queryKey: ["jobs", page, state],
     queryFn: () => api<List<Job>>(`/jobs?page=${page}&state=${state}`),
@@ -841,6 +898,11 @@ export function Jobs() {
         }
       />
       <div className="stat-grid">
+        {!!processing.data?.reasons.length && (
+          <p className="muted" role="status">
+            {processing.data.reasons.join(" · ")}
+          </p>
+        )}
         {[
           ["照片", stats.data?.photos],
           ["事件", stats.data?.events],

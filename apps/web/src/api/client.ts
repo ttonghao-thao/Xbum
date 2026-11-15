@@ -7,6 +7,7 @@ export interface Analysis {
   status: string;
 }
 export interface Photo {
+  preferred?: boolean;
   id: string;
   household_id: string;
   uploader_id: string;
@@ -89,6 +90,9 @@ export interface FamilyEvent {
   participants_json: string[];
 }
 export interface Slide {
+  narration_url?: string;
+  narration_transcript?: string;
+  narration_invalid?: boolean;
   photo_id: string;
   position?: number;
   duration_s: number;
@@ -96,6 +100,20 @@ export interface Slide {
   transition: "fade" | "cut";
 }
 export interface Story {
+  composition?: {
+    state: string;
+    length: string;
+    generator: string;
+    job_id?: string;
+    job_state?: string;
+    error_message?: string;
+    chapters?: { title: string; photo_ids: string[] }[];
+    sources?: {
+      photo_id: string;
+      caption_source: string;
+      date: string | null;
+    }[];
+  } | null;
   id: string;
   title: string;
   theme: "warm" | "classic" | "night";
@@ -120,6 +138,11 @@ export interface Settings {
   speech_enabled: boolean;
   embedding_enabled: boolean;
   vlm_enabled: boolean;
+  ocr_enabled: boolean;
+  background_start_hour: number;
+  background_end_hour: number;
+  min_free_memory_mb: number;
+  min_free_disk_mb: number;
   jobs_paused: boolean;
   daily_photo_limit: number;
   display_interval_seconds: number;
@@ -152,13 +175,21 @@ export interface Auth {
   csrf: string;
   household: Household;
 }
+export type AccountAuth =
+  | Auth
+  | (Omit<Auth, "role" | "household"> & {
+      role: "account";
+      household: null;
+      needs_household: true;
+    });
 export interface List<T> {
   items: T[];
   total: number;
   page?: number;
 }
 export interface AlbumSummary {
-  kind: "on_this_day" | "growth" | "travel";
+  pinned?: boolean;
+  kind: "on_this_day" | "growth" | "travel" | "recent";
   title: string;
   description: string;
   total: number;
@@ -179,6 +210,17 @@ export type MemoryAlbum = AlbumSummary &
   List<AlbumPhoto> & {
     private_photo_count: number;
     scope: "visible" | "family";
+    highlights?: AlbumPhoto[];
+    groups?: {
+      id: string;
+      title: string;
+      total: number;
+      dates?: Record<string, number>;
+      milestones?: { id: string; date: string; title: string; note: string }[];
+    }[];
+    people?: { id: string; name: string | null }[];
+    pinned?: boolean;
+    explanation?: string | string[] | { messages?: string[] };
   };
 export interface PlaylistItem {
   id: string;

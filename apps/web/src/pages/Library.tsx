@@ -36,6 +36,8 @@ import {
   useNotice,
 } from "../components/ui";
 import { AudioRecorder, MemoriesList } from "../components/Audio";
+import { PhotoTextEditor } from "./Discover";
+import { MemorySuggestions } from "../components/StoryEnhancements";
 
 export function Home() {
   const auth = useAuth();
@@ -187,37 +189,58 @@ export function Home() {
           ["on_this_day", "往年今日", "暂无往年同日或前后 3 天的照片"],
           ["growth", "慢慢长大", "分析完成后自动整理成长相关画面"],
           ["travel", "一起走过", "分析完成后自动整理旅行与出游"],
-        ].map(([scene, title, subtitle], i) => {
-          const album = albums.data?.items.find((p) => p.kind === scene);
-          return (
-            <Link
-              to={"/albums/" + scene}
-              className={"scene-card scene-" + i}
-              key={scene}
-            >
-              {album?.cover ? (
-                <img src={album.cover.thumbnail_url} alt={title} />
-              ) : (
-                <span className="scene-number">0{i + 1}</span>
-              )}
-              <div>
-                <h3>{title}</h3>
-                <p>
-                  {albums.isPending
-                    ? "正在整理…"
-                    : albums.error
-                      ? "暂时无法读取相册"
-                      : album?.total
-                        ? `${album.total} 张照片 · ${album.mode === "manual" ? "按人工选择整理" : "已自动整理"}`
-                        : subtitle}
-                </p>
-              </div>
-              <ArrowRight size={18} />
-            </Link>
-          );
-        })}
+          ["recent", "最近的日子", "按拍摄时间回顾最近的日常"],
+        ]
+          .sort(
+            (a, b) =>
+              Number(
+                !!albums.data?.items.find((p) => p.kind === b[0])?.pinned,
+              ) -
+              Number(!!albums.data?.items.find((p) => p.kind === a[0])?.pinned),
+          )
+          .map(([scene, title, subtitle], i) => {
+            const album = albums.data?.items.find((p) => p.kind === scene);
+            return (
+              <Link
+                to={"/albums/" + scene}
+                className={"scene-card scene-" + i}
+                key={scene}
+              >
+                {album?.cover ? (
+                  <img src={album.cover.thumbnail_url} alt={title} />
+                ) : (
+                  <span className="scene-number">0{i + 1}</span>
+                )}
+                <div>
+                  <h3>{title}</h3>
+                  <p>
+                    {albums.isPending
+                      ? "正在整理…"
+                      : albums.error
+                        ? "暂时无法读取相册"
+                        : album?.total
+                          ? `${album.total} 张照片 · ${album.mode === "manual" ? "按人工选择整理" : "已自动整理"}`
+                          : subtitle}
+                  </p>
+                </div>
+                <ArrowRight size={18} />
+              </Link>
+            );
+          })}
+      </div>
+      <div className="filters">
+        <Link to="/collections" className="button">
+          我保存的智能相册
+        </Link>
+        <Link to="/duplicates" className="button">
+          比较相似照片
+        </Link>
+        <Link to="/preferences" className="button">
+          调整推荐偏好
+        </Link>
       </div>
       {albums.error && <ErrorBox error={albums.error} />}
+      <MemorySuggestions />
       {!!albums.data?.private_photo_count && (
         <p className="muted">
           其中 {albums.data.private_photo_count}{" "}
@@ -848,6 +871,11 @@ export function PhotoDetail() {
             >
               取消收藏
             </button>
+            {p.visibility === "family" && (
+              <Link className="button" to={"/search?reference=" + p.id}>
+                以这张照片找相似画面
+              </Link>
+            )}
             <button
               onClick={() =>
                 void action(`/photos/${id}/feedback`, "POST", { type: "like" })
@@ -1034,6 +1062,9 @@ export function PhotoDetail() {
           ))}
         </details>
       </section>
+      {p.visibility === "family" && !p.is_deleted && !p.is_hidden && (
+        <PhotoTextEditor photoId={p.id} />
+      )}
       <section className="panel">
         <h2>这张照片背后的故事</h2>
         <p className="muted">
